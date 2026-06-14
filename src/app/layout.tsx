@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Furniture OMS",
-  description: "Order Management System for Custom Furniture",
+  title: "Rayman OMS",
+  description: "Order Management System — Rayman Exports Pvt Ltd",
 };
 
 export default function RootLayout({

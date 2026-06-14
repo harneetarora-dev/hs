@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { formatDate, formatINR, statusLabel } from "@/lib/format";
+import { COMPANY, DEFAULT_TERMS } from "@/lib/company";
 import InvoiceActions from "./InvoiceActions";
 
 export default async function OrderInvoicePage({ params }: { params: Promise<{ id: string }> }) {
@@ -43,6 +44,27 @@ export default async function OrderInvoicePage({ params }: { params: Promise<{ i
             {statusLabel(invoice.status)}
           </span>
         )}
+      </div>
+
+      {/* Company Header */}
+      <div className="bg-card border border-border rounded-xl p-6 mb-6">
+        <div className="flex justify-between items-start">
+          <div>
+            <h2 className="text-lg font-bold text-foreground">{COMPANY.name}</h2>
+            <p className="text-xs text-muted mt-0.5">GSTN: {COMPANY.gstn}</p>
+            <p className="text-xs text-muted mt-2">
+              <span className="font-medium">{COMPANY.office.label}:</span> {COMPANY.office.address}, {COMPANY.office.city} - {COMPANY.office.pincode}, {COMPANY.office.state}
+            </p>
+            <p className="text-xs text-muted mt-0.5">
+              <span className="font-medium">{COMPANY.factory.label}:</span> {COMPANY.factory.address}, {COMPANY.factory.city} - {COMPANY.factory.pincode}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-muted">Bill To:</p>
+            <p className="text-sm font-medium text-foreground">{order.clientName}</p>
+            {order.clientPhone && <p className="text-xs text-muted">{order.clientPhone}</p>}
+          </div>
+        </div>
       </div>
 
       {invoice ? (
@@ -126,6 +148,35 @@ export default async function OrderInvoicePage({ params }: { params: Promise<{ i
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Terms & Bank Details */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-card border border-border rounded-xl p-6">
+              <h2 className="font-semibold text-foreground mb-3">Terms & Conditions</h2>
+              <p className="text-sm text-foreground whitespace-pre-wrap">{DEFAULT_TERMS}</p>
+            </div>
+            <div className="bg-card border border-border rounded-xl p-6">
+              <h2 className="font-semibold text-foreground mb-3">Bank Details</h2>
+              <dl className="space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-muted">Account Name</dt>
+                  <dd className="text-foreground font-medium">{COMPANY.bank.accountName}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted">A/C No.</dt>
+                  <dd className="text-foreground font-medium">{COMPANY.bank.accountNumber}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted">IFSC</dt>
+                  <dd className="text-foreground font-medium">{COMPANY.bank.ifsc}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted">Bank</dt>
+                  <dd className="text-foreground text-xs">{COMPANY.bank.name}</dd>
+                </div>
+              </dl>
+            </div>
           </div>
 
           <InvoiceActions

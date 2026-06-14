@@ -127,7 +127,7 @@ export default function Sidebar({ userRole, userName }: SidebarProps) {
             </svg>
           </div>
           <div>
-            <h1 className="font-bold text-foreground text-sm">Furniture OMS</h1>
+            <h1 className="font-bold text-foreground text-sm">Rayman OMS</h1>
             <p className="text-xs text-muted capitalize">{userRole}</p>
           </div>
         </div>

@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, Suspense } from "react";
+import { DEFAULT_TERMS } from "@/lib/company";
 
 function NewQuoteForm() {
   const router = useRouter();
@@ -86,7 +87,8 @@ function NewQuoteForm() {
             <textarea
               id="notesToClient"
               name="notesToClient"
-              rows={3}
+              rows={6}
+              defaultValue={DEFAULT_TERMS}
               className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors resize-none"
               placeholder="Terms, conditions, or notes visible to the client..."
             />

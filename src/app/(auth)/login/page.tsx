@@ -51,8 +51,8 @@ export default function LoginPage() {
               />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-foreground">Furniture OMS</h1>
-          <p className="text-muted mt-1">Order Management System</p>
+          <h1 className="text-2xl font-bold text-foreground">Rayman OMS</h1>
+          <p className="text-muted mt-1">Rayman Exports Pvt Ltd</p>
         </div>
 
         <div className="bg-card rounded-xl border border-border p-8 shadow-sm">
