@@ -50,7 +50,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
         <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${getQuoteStatusStyle(quote.status)}`}>
           {statusLabel(quote.status)}
         </span>
-        {session.user.role === "merchant" && quote.status === "draft" && (
+        {(session.user.role === "merchant" || session.user.role === "owner") && quote.status === "draft" && (
           <Link
             href={`/quotes/${quote.id}/edit`}
             className="px-4 py-2 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary-light transition-colors"
@@ -70,7 +70,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             {quote.bomItems.length === 0 ? (
               <div className="p-8 text-center text-muted">
                 <p>No items yet</p>
-                {session.user.role === "merchant" && (
+                {(session.user.role === "merchant" || session.user.role === "owner") && (
                   <Link href={`/quotes/${quote.id}/edit`} className="text-primary text-sm font-medium hover:underline mt-2 inline-block">
                     Add items to this quote
                   </Link>

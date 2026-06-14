@@ -26,8 +26,8 @@ export async function GET() {
 export async function POST(request: Request) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.user.role !== "merchant") {
-    return NextResponse.json({ error: "Only merchants can create quotes" }, { status: 403 });
+  if (session.user.role !== "merchant" && session.user.role !== "owner") {
+    return NextResponse.json({ error: "Only merchants and owners can create quotes" }, { status: 403 });
   }
 
   const body = await request.json();
@@ -38,8 +38,11 @@ export async function POST(request: Request) {
   }
 
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
-  if (!lead || lead.merchantId !== session.user.id) {
-    return NextResponse.json({ error: "Lead not found or not yours" }, { status: 404 });
+  if (!lead) {
+    return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+  }
+  if (session.user.role === "merchant" && lead.merchantId !== session.user.id) {
+    return NextResponse.json({ error: "Not your lead" }, { status: 403 });
   }
 
   const count = await prisma.quote.count();

@@ -29,8 +29,8 @@ export async function GET() {
 export async function POST(request: Request) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.user.role !== "merchant") {
-    return NextResponse.json({ error: "Only merchants can create leads" }, { status: 403 });
+  if (session.user.role !== "merchant" && session.user.role !== "owner") {
+    return NextResponse.json({ error: "Only merchants and owners can create leads" }, { status: 403 });
   }
 
   const body = await request.json();

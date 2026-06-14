@@ -25,13 +25,16 @@ export async function PUT(
   const { id } = await params;
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (session.user.role !== "merchant") {
+  if (session.user.role !== "merchant" && session.user.role !== "owner") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const quote = await prisma.quote.findUnique({ where: { id } });
-  if (!quote || quote.merchantId !== session.user.id) {
+  if (!quote) {
     return NextResponse.json({ error: "Quote not found" }, { status: 404 });
+  }
+  if (session.user.role === "merchant" && quote.merchantId !== session.user.id) {
+    return NextResponse.json({ error: "Not your quote" }, { status: 403 });
   }
 
   const body = await request.json();

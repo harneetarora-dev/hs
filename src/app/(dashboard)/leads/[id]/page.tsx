@@ -128,7 +128,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             </dl>
           </div>
 
-          {session.user.role === "merchant" && lead.status !== "converted" && (
+          {(session.user.role === "merchant" || session.user.role === "owner") && lead.status !== "converted" && (
             <div className="space-y-2">
               <Link
                 href={`/quotes/new?leadId=${lead.id}`}
