@@ -1,26 +1,72 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #FDF8F0;
+  --foreground: #2C2C2C;
+  --primary: #2D5016;
+  --primary-light: #3D6B1E;
+  --secondary: #87CEEB;
+  --accent: #C4704B;
+  --surface: #E8F0E0;
+  --surface-hover: #DCE8D2;
+  --muted: #6B6B6B;
+  --border: #D4DEC4;
+  --border-strong: #B8C9A4;
+  --warning: #DAA520;
+  --warning-light: #FFF3D0;
+  --danger: #C44B4B;
+  --danger-light: #FDE8E8;
+  --success: #2D5016;
+  --success-light: #E8F0E0;
+  --card: #FFFFFF;
+  --card-hover: #FAFDF7;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-light: var(--primary-light);
+  --color-secondary: var(--secondary);
+  --color-accent: var(--accent);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-warning: var(--warning);
+  --color-warning-light: var(--warning-light);
+  --color-danger: var(--danger);
+  --color-danger-light: var(--danger-light);
+  --color-success: var(--success);
+  --color-success-light: var(--success-light);
+  --color-card: var(--card);
+  --color-card-hover: var(--card-hover);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
 }

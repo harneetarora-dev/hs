@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: oms
+      POSTGRES_PASSWORD: oms_password
+      POSTGRES_DB: furniture_oms
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
