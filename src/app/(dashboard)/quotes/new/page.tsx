@@ -1,8 +1,14 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { DEFAULT_TERMS } from "@/lib/company";
+
+interface Customer {
+  id: string;
+  name: string;
+  companyName: string | null;
+}
 
 function NewQuoteForm() {
   const router = useRouter();
@@ -10,6 +16,15 @@ function NewQuoteForm() {
   const leadId = searchParams.get("leadId");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
+
+  useEffect(() => {
+    fetch("/api/customers")
+      .then((r) => r.json())
+      .then((data) => setCustomers(data))
+      .catch(() => {});
+  }, []);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -19,6 +34,7 @@ function NewQuoteForm() {
     const formData = new FormData(e.currentTarget);
     const data = {
       leadId,
+      customerId: selectedCustomerId || undefined,
       taxRate: Number(formData.get("taxRate")) || 18,
       notesToClient: formData.get("notesToClient"),
       internalNotes: formData.get("internalNotes"),
@@ -49,7 +65,7 @@ function NewQuoteForm() {
     return (
       <div className="max-w-2xl mx-auto">
         <div className="bg-card border border-border rounded-xl p-12 text-center">
-          <p className="text-muted">No lead selected. Go to a lead and click "Create Quote".</p>
+          <p className="text-muted">No lead selected. Go to a lead and click &quot;Create Quote&quot;.</p>
           <button onClick={() => router.push("/leads")} className="text-primary text-sm font-medium hover:underline mt-2">
             Go to Leads
           </button>
@@ -68,6 +84,30 @@ function NewQuoteForm() {
       <div className="bg-card border border-border rounded-xl p-6">
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
+            <label className="block text-sm font-medium text-foreground mb-1.5">
+              Customer (optional)
+            </label>
+            <select
+              value={selectedCustomerId}
+              onChange={(e) => setSelectedCustomerId(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
+            >
+              <option value="">— No customer linked —</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}{c.companyName ? ` (${c.companyName})` : ""}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted mt-1">
+              Link this quote to a customer for tracking.{" "}
+              <a href="/customers/new" target="_blank" className="text-primary hover:underline">
+                Create new customer
+              </a>
+            </p>
+          </div>
+
+          <div>
             <label htmlFor="taxRate" className="block text-sm font-medium text-foreground mb-1.5">
               GST Rate (%)
             </label>
@@ -82,7 +122,7 @@ function NewQuoteForm() {
 
           <div>
             <label htmlFor="notesToClient" className="block text-sm font-medium text-foreground mb-1.5">
-              Notes to Client
+              Terms & Conditions
             </label>
             <textarea
               id="notesToClient"
@@ -119,7 +159,7 @@ function NewQuoteForm() {
               disabled={loading}
               className="px-5 py-2.5 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary-light disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {loading ? "Creating..." : "Create Quote & Add BOM"}
+              {loading ? "Creating..." : "Create Quote & Add Items"}
             </button>
             <button
               type="button"

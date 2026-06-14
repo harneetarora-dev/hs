@@ -1,91 +1,99 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { formatINR } from "@/lib/format";
+import Link from "next/link";
 
-interface BomItem {
+interface QuoteItem {
   id?: string;
   lineNumber: number;
+  productCode: string;
   description: string;
-  materialCategory: string;
-  materialName: string;
-  materialGrade: string;
-  unit: string;
   quantity: number;
+  unit: string;
   ratePerUnit: number;
-  materialCost: number;
-  laborCost: number;
-  finishingCost: number;
-  hardwareCost: number;
-  transportCost: number;
-  marginPercent: number;
   lineTotal: number;
-  lengthValue: number | null;
-  lengthUnit: string;
-  widthValue: number | null;
-  widthUnit: string;
-  heightValue: number | null;
-  heightUnit: string;
+  notes: string;
+  imageUrl: string | null;
+  drawingUrl: string | null;
 }
 
-const emptyItem: Omit<BomItem, "lineNumber"> = {
+const emptyItem: Omit<QuoteItem, "lineNumber"> = {
+  productCode: "",
   description: "",
-  materialCategory: "wood",
-  materialName: "",
-  materialGrade: "",
-  unit: "piece",
   quantity: 1,
+  unit: "piece",
   ratePerUnit: 0,
-  materialCost: 0,
-  laborCost: 0,
-  finishingCost: 0,
-  hardwareCost: 0,
-  transportCost: 0,
-  marginPercent: 0,
   lineTotal: 0,
-  lengthValue: null,
-  lengthUnit: "ft",
-  widthValue: null,
-  widthUnit: "ft",
-  heightValue: null,
-  heightUnit: "ft",
+  notes: "",
+  imageUrl: null,
+  drawingUrl: null,
 };
 
 export default function QuoteEditPage() {
   const params = useParams();
   const router = useRouter();
-  const [items, setItems] = useState<BomItem[]>([]);
+  const [items, setItems] = useState<QuoteItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [quoteNumber, setQuoteNumber] = useState("");
+  const [currentVersion, setCurrentVersion] = useState(1);
+  const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
 
   useEffect(() => {
     async function load() {
-      const res = await fetch(`/api/quotes/${params.id}/bom`);
-      if (res.ok) {
-        const data = await res.json();
-        setItems(data.length > 0 ? data : [{ ...emptyItem, lineNumber: 1 }]);
+      const [bomRes, quoteRes] = await Promise.all([
+        fetch(`/api/quotes/${params.id}/bom`),
+        fetch(`/api/quotes/${params.id}/bom`).then(() =>
+          fetch(`/api/quotes/${params.id}/bom`)
+        ),
+      ]);
+
+      const quoteInfoRes = await fetch(`/api/quotes?_=${Date.now()}`);
+      if (quoteInfoRes.ok) {
+        const quotes = await quoteInfoRes.json();
+        const thisQuote = quotes.find((q: { id: string }) => q.id === params.id);
+        if (thisQuote) {
+          setQuoteNumber(thisQuote.quoteNumber);
+          setCurrentVersion(thisQuote.currentVersion);
+        }
+      }
+
+      if (bomRes.ok) {
+        const data = await bomRes.json();
+        if (data.length > 0) {
+          setItems(
+            data.map((item: any) => ({
+              id: item.id,
+              lineNumber: item.lineNumber,
+              productCode: item.productCode || "",
+              description: item.description,
+              quantity: Number(item.quantity),
+              unit: item.unit,
+              ratePerUnit: Number(item.ratePerUnit),
+              lineTotal: Number(item.lineTotal),
+              notes: item.notes || "",
+              imageUrl: item.imageUrl,
+              drawingUrl: item.drawingUrl,
+            }))
+          );
+        } else {
+          setItems([{ ...emptyItem, lineNumber: 1 }]);
+        }
       }
       setLoading(false);
     }
     load();
   }, [params.id]);
 
-  function calculateLineTotal(item: BomItem): number {
-    const matCost = item.quantity * item.ratePerUnit;
-    const subtotal = matCost + item.laborCost + item.finishingCost + item.hardwareCost + item.transportCost;
-    const withMargin = subtotal * (1 + item.marginPercent / 100);
-    return Math.round(withMargin * 100) / 100;
-  }
-
   function updateItem(index: number, field: string, value: string | number | null) {
     const newItems = [...items];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (newItems[index] as any)[field] = value;
 
-    if (["quantity", "ratePerUnit", "laborCost", "finishingCost", "hardwareCost", "transportCost", "marginPercent"].includes(field)) {
-      newItems[index].materialCost = newItems[index].quantity * newItems[index].ratePerUnit;
-      newItems[index].lineTotal = calculateLineTotal(newItems[index]);
+    if (field === "quantity" || field === "ratePerUnit") {
+      newItems[index].lineTotal =
+        Math.round(newItems[index].quantity * newItems[index].ratePerUnit * 100) / 100;
     }
 
     setItems(newItems);
@@ -96,8 +104,22 @@ export default function QuoteEditPage() {
   }
 
   function removeItem(index: number) {
-    const newItems = items.filter((_, i) => i !== index).map((item, i) => ({ ...item, lineNumber: i + 1 }));
+    const newItems = items
+      .filter((_, i) => i !== index)
+      .map((item, i) => ({ ...item, lineNumber: i + 1 }));
     setItems(newItems);
+  }
+
+  async function uploadFile(index: number, type: "image" | "drawing", file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await fetch("/api/uploads", { method: "POST", body: formData });
+    if (res.ok) {
+      const { url } = await res.json();
+      const field = type === "image" ? "imageUrl" : "drawingUrl";
+      updateItem(index, field, url);
+    }
   }
 
   async function handleSave() {
@@ -105,7 +127,10 @@ export default function QuoteEditPage() {
     const res = await fetch(`/api/quotes/${params.id}/bom`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items }),
+      body: JSON.stringify({
+        items,
+        changeSummary: `Items updated — V${currentVersion + 1}`,
+      }),
     });
 
     if (res.ok) {
@@ -115,11 +140,11 @@ export default function QuoteEditPage() {
     setSaving(false);
   }
 
-  const grandSubtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
+  const grandTotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-surface rounded w-48" />
           <div className="h-96 bg-surface rounded-xl" />
@@ -129,200 +154,239 @@ export default function QuoteEditPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Edit BOM</h1>
-          <p className="text-muted mt-1">Add materials, dimensions, and pricing</p>
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/quotes/${params.id}`}
+            className="text-muted hover:text-foreground transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+            </svg>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">
+              {quoteNumber ? `${quoteNumber}-V${currentVersion}` : "Edit Quote"}
+            </h1>
+            <p className="text-muted text-sm mt-0.5">
+              Add products, quantities, and pricing
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted">
-            Total: <span className="font-bold text-foreground">{formatINR(grandSubtotal)}</span>
+            Total:{" "}
+            <span className="font-bold text-foreground text-lg">
+              {formatINR(grandTotal)}
+            </span>
           </span>
           <button
             onClick={handleSave}
             disabled={saving}
             className="px-5 py-2.5 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary-light disabled:opacity-50 transition-colors"
           >
-            {saving ? "Saving..." : "Save BOM"}
+            {saving ? "Saving..." : "Save Quote"}
           </button>
         </div>
       </div>
 
-      <div className="space-y-4">
+      {/* Table header */}
+      <div className="hidden md:grid grid-cols-[60px_120px_1fr_100px_100px_130px_130px] gap-3 px-5 py-2 text-xs font-medium text-muted uppercase tracking-wide">
+        <span>S.No</span>
+        <span>SKU Code</span>
+        <span>Description</span>
+        <span>Qty</span>
+        <span>Unit</span>
+        <span>Price/Unit (₹)</span>
+        <span className="text-right">Amount (₹)</span>
+      </div>
+
+      <div className="space-y-3">
         {items.map((item, index) => (
           <div key={index} className="bg-card border border-border rounded-xl p-5">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm font-medium text-muted">Line {item.lineNumber}</span>
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-bold text-primary">{formatINR(item.lineTotal)}</span>
+            {/* Main row */}
+            <div className="grid grid-cols-1 md:grid-cols-[60px_120px_1fr_100px_100px_130px_130px] gap-3 items-start">
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1 md:hidden">
+                  S.No
+                </label>
+                <div className="w-full px-3 py-2 rounded-lg bg-surface text-sm text-center font-medium text-muted">
+                  {item.lineNumber}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1 md:hidden">
+                  SKU Code
+                </label>
+                <input
+                  value={item.productCode}
+                  onChange={(e) => updateItem(index, "productCode", e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  placeholder="SKU"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1 md:hidden">
+                  Description
+                </label>
+                <input
+                  value={item.description}
+                  onChange={(e) => updateItem(index, "description", e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  placeholder="Product description"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1 md:hidden">
+                  Qty
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={item.quantity}
+                  onChange={(e) =>
+                    updateItem(index, "quantity", parseFloat(e.target.value) || 0)
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1 md:hidden">
+                  Unit
+                </label>
+                <select
+                  value={item.unit}
+                  onChange={(e) => updateItem(index, "unit", e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                >
+                  <option value="piece">Pcs</option>
+                  <option value="sq_ft">Sq.ft</option>
+                  <option value="set">Set</option>
+                  <option value="running_ft">Rft</option>
+                  <option value="kg">Kg</option>
+                  <option value="litre">Ltr</option>
+                  <option value="cu_ft">Cu.ft</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-muted mb-1 md:hidden">
+                  Price/Unit
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={item.ratePerUnit}
+                  onChange={(e) =>
+                    updateItem(index, "ratePerUnit", parseFloat(e.target.value) || 0)
+                  }
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+              </div>
+
+              <div className="flex items-start gap-2">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-muted mb-1 md:hidden">
+                    Amount
+                  </label>
+                  <div className="w-full px-3 py-2 rounded-lg bg-surface text-sm text-right font-medium text-foreground">
+                    {formatINR(item.lineTotal)}
+                  </div>
+                </div>
                 {items.length > 1 && (
-                  <button onClick={() => removeItem(index)} className="text-danger hover:text-danger/80 transition-colors">
+                  <button
+                    onClick={() => removeItem(index)}
+                    className="mt-1 text-danger hover:text-danger/80 transition-colors"
+                  >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
                 )}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-muted mb-1">Description *</label>
+            {/* Notes and attachments row */}
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-start">
+              <div>
                 <input
-                  value={item.description}
-                  onChange={(e) => updateItem(index, "description", e.target.value)}
+                  value={item.notes}
+                  onChange={(e) => updateItem(index, "notes", e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                  placeholder="e.g., Dining table top - Teak"
+                  placeholder="Notes (optional)"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1">Category</label>
-                <select
-                  value={item.materialCategory}
-                  onChange={(e) => updateItem(index, "materialCategory", e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                >
-                  <option value="wood">Wood</option>
-                  <option value="hardware">Hardware</option>
-                  <option value="fabric">Fabric</option>
-                  <option value="glass">Glass</option>
-                  <option value="metal">Metal</option>
-                  <option value="finish">Finish</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1">Material Name</label>
+              <div className="flex items-center gap-2">
+                {/* Image upload */}
                 <input
-                  value={item.materialName}
-                  onChange={(e) => updateItem(index, "materialName", e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                  placeholder="e.g., Teak"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mt-4">
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1">Quantity</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={item.quantity}
-                  onChange={(e) => updateItem(index, "quantity", parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1">Unit</label>
-                <select
-                  value={item.unit}
-                  onChange={(e) => updateItem(index, "unit", e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                >
-                  <option value="sq_ft">sq.ft</option>
-                  <option value="cu_ft">cu.ft</option>
-                  <option value="running_ft">running ft</option>
-                  <option value="piece">piece</option>
-                  <option value="kg">kg</option>
-                  <option value="litre">litre</option>
-                  <option value="set">set</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1">Rate/Unit (₹)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={item.ratePerUnit}
-                  onChange={(e) => updateItem(index, "ratePerUnit", parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1">Labor (₹)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={item.laborCost}
-                  onChange={(e) => updateItem(index, "laborCost", parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1">Finishing (₹)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={item.finishingCost}
-                  onChange={(e) => updateItem(index, "finishingCost", parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1">Margin %</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={item.marginPercent}
-                  onChange={(e) => updateItem(index, "marginPercent", parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                />
-              </div>
-            </div>
-
-            {/* Dimensions Row */}
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mt-4">
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1">Length</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={item.lengthValue ?? ""}
-                  onChange={(e) => updateItem(index, "lengthValue", e.target.value ? parseFloat(e.target.value) : null)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                  placeholder="L"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1">Width</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={item.widthValue ?? ""}
-                  onChange={(e) => updateItem(index, "widthValue", e.target.value ? parseFloat(e.target.value) : null)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                  placeholder="W"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1">Height</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={item.heightValue ?? ""}
-                  onChange={(e) => updateItem(index, "heightValue", e.target.value ? parseFloat(e.target.value) : null)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                  placeholder="H"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1">Dim. Unit</label>
-                <select
-                  value={item.lengthUnit}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  ref={(el) => { fileInputRefs.current[`img-${index}`] = el; }}
+                  className="hidden"
                   onChange={(e) => {
-                    updateItem(index, "lengthUnit", e.target.value);
-                    updateItem(index, "widthUnit", e.target.value);
-                    updateItem(index, "heightUnit", e.target.value);
+                    const file = e.target.files?.[0];
+                    if (file) uploadFile(index, "image", file);
                   }}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+                <button
+                  onClick={() => fileInputRefs.current[`img-${index}`]?.click()}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                    item.imageUrl
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted hover:border-primary hover:text-primary"
+                  }`}
+                  title={item.imageUrl ? "Image attached" : "Attach image"}
                 >
-                  <option value="mm">mm</option>
-                  <option value="cm">cm</option>
-                  <option value="inch">inches</option>
-                  <option value="ft">feet</option>
-                </select>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
+                  </svg>
+                  {item.imageUrl ? "Image" : "Image"}
+                </button>
+
+                {/* PDF upload */}
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  ref={(el) => { fileInputRefs.current[`pdf-${index}`] = el; }}
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadFile(index, "drawing", file);
+                  }}
+                />
+                <button
+                  onClick={() => fileInputRefs.current[`pdf-${index}`]?.click()}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                    item.drawingUrl
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted hover:border-primary hover:text-primary"
+                  }`}
+                  title={item.drawingUrl ? "Drawing attached" : "Attach drawing (PDF)"}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                  </svg>
+                  {item.drawingUrl ? "PDF" : "PDF"}
+                </button>
+
+                {(item.imageUrl || item.drawingUrl) && (
+                  <button
+                    onClick={() => {
+                      updateItem(index, "imageUrl", null);
+                      updateItem(index, "drawingUrl", null);
+                    }}
+                    className="text-xs text-danger hover:underline"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -335,6 +399,23 @@ export default function QuoteEditPage() {
       >
         + Add Line Item
       </button>
+
+      {/* Sticky save bar */}
+      <div className="sticky bottom-0 mt-6 -mx-4 px-4 py-4 bg-background/90 backdrop-blur-sm border-t border-border">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <div className="text-sm text-muted">
+            {items.length} item{items.length !== 1 ? "s" : ""} &middot; Grand Total:{" "}
+            <span className="font-bold text-foreground text-lg">{formatINR(grandTotal)}</span>
+          </div>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-6 py-2.5 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary-light disabled:opacity-50 transition-colors"
+          >
+            {saving ? "Saving..." : `Save as V${currentVersion + 1}`}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

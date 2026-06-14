@@ -31,7 +31,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { leadId, taxRate, notesToClient, internalNotes } = body;
+  const { leadId, customerId, taxRate, notesToClient, internalNotes } = body;
 
   if (!leadId) {
     return NextResponse.json({ error: "Lead ID is required" }, { status: 400 });
@@ -52,6 +52,7 @@ export async function POST(request: Request) {
     data: {
       quoteNumber,
       leadId,
+      customerId: customerId || null,
       merchantId: session.user.id,
       taxRate: taxRate || 18.00,
       notesToClient: notesToClient || null,

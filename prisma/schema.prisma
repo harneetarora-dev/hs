@@ -139,6 +139,27 @@ enum EntityType {
   production
 }
 
+model Customer {
+  id          String   @id @default(uuid())
+  name        String
+  companyName String?  @map("company_name")
+  phone       String?
+  email       String?
+  gstn        String?
+  address     String?
+  city        String?
+  state       String?
+  pincode     String?
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  quotes      Quote[]
+  orders      Order[]
+
+  @@map("customers")
+}
+
 model User {
   id                   String   @id @default(uuid())
   name                 String
@@ -216,6 +237,7 @@ model Quote {
   id             String       @id @default(uuid())
   quoteNumber    String       @unique @map("quote_number")
   leadId         String       @map("lead_id")
+  customerId     String?      @map("customer_id")
   merchantId     String       @map("merchant_id")
   currentVersion Int          @default(1) @map("current_version")
   status         QuoteStatus  @default(draft)
@@ -228,6 +250,7 @@ model Quote {
   updatedAt      DateTime     @updatedAt @map("updated_at")
 
   lead           Lead         @relation(fields: [leadId], references: [id])
+  customer       Customer?    @relation(fields: [customerId], references: [id])
   merchant       User         @relation(fields: [merchantId], references: [id])
   versions       QuoteVersion[]
   bomItems       BomItem[]
@@ -255,38 +278,42 @@ model QuoteVersion {
 }
 
 model BomItem {
-  id               String           @id @default(uuid())
-  quoteId          String           @map("quote_id")
-  lineNumber       Int              @map("line_number")
+  id               String            @id @default(uuid())
+  quoteId          String            @map("quote_id")
+  lineNumber       Int               @map("line_number")
   description      String
-  materialCategory MaterialCategory @map("material_category")
-  materialName     String?          @map("material_name")
-  materialGrade    String?          @map("material_grade")
+  productCode      String?           @map("product_code")
+  materialCategory MaterialCategory? @map("material_category")
+  materialName     String?           @map("material_name")
+  materialGrade    String?           @map("material_grade")
   supplier         String?
-  unit             QuantityUnit
-  quantity         Decimal          @db.Decimal(10, 2)
-  ratePerUnit      Decimal          @map("rate_per_unit") @db.Decimal(12, 2)
-  materialCost     Decimal          @map("material_cost") @db.Decimal(12, 2)
-  laborCost        Decimal          @default(0) @map("labor_cost") @db.Decimal(12, 2)
-  finishingCost    Decimal          @default(0) @map("finishing_cost") @db.Decimal(12, 2)
-  hardwareCost     Decimal          @default(0) @map("hardware_cost") @db.Decimal(12, 2)
-  transportCost    Decimal          @default(0) @map("transport_cost") @db.Decimal(12, 2)
-  marginPercent    Decimal          @default(0) @map("margin_percent") @db.Decimal(5, 2)
-  lineTotal        Decimal          @map("line_total") @db.Decimal(12, 2)
-  lengthValue      Decimal?         @map("length_value") @db.Decimal(10, 2)
-  lengthUnit       MeasurementUnit? @map("length_unit")
-  widthValue       Decimal?         @map("width_value") @db.Decimal(10, 2)
-  widthUnit        MeasurementUnit? @map("width_unit")
-  heightValue      Decimal?         @map("height_value") @db.Decimal(10, 2)
-  heightUnit       MeasurementUnit? @map("height_unit")
-  depthValue       Decimal?         @map("depth_value") @db.Decimal(10, 2)
-  depthUnit        MeasurementUnit? @map("depth_unit")
-  customDimensions Json?            @map("custom_dimensions")
-  dimensionNotes   String?          @map("dimension_notes")
-  createdAt        DateTime         @default(now()) @map("created_at")
-  updatedAt        DateTime         @updatedAt @map("updated_at")
+  unit             QuantityUnit      @default(piece)
+  quantity         Decimal           @db.Decimal(10, 2)
+  ratePerUnit      Decimal           @map("rate_per_unit") @db.Decimal(12, 2)
+  materialCost     Decimal           @default(0) @map("material_cost") @db.Decimal(12, 2)
+  laborCost        Decimal           @default(0) @map("labor_cost") @db.Decimal(12, 2)
+  finishingCost    Decimal           @default(0) @map("finishing_cost") @db.Decimal(12, 2)
+  hardwareCost     Decimal           @default(0) @map("hardware_cost") @db.Decimal(12, 2)
+  transportCost    Decimal           @default(0) @map("transport_cost") @db.Decimal(12, 2)
+  marginPercent    Decimal           @default(0) @map("margin_percent") @db.Decimal(5, 2)
+  lineTotal        Decimal           @map("line_total") @db.Decimal(12, 2)
+  notes            String?
+  imageUrl         String?           @map("image_url")
+  drawingUrl       String?           @map("drawing_url")
+  lengthValue      Decimal?          @map("length_value") @db.Decimal(10, 2)
+  lengthUnit       MeasurementUnit?  @map("length_unit")
+  widthValue       Decimal?          @map("width_value") @db.Decimal(10, 2)
+  widthUnit        MeasurementUnit?  @map("width_unit")
+  heightValue      Decimal?          @map("height_value") @db.Decimal(10, 2)
+  heightUnit       MeasurementUnit?  @map("height_unit")
+  depthValue       Decimal?          @map("depth_value") @db.Decimal(10, 2)
+  depthUnit        MeasurementUnit?  @map("depth_unit")
+  customDimensions Json?             @map("custom_dimensions")
+  dimensionNotes   String?           @map("dimension_notes")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
 
-  quote            Quote            @relation(fields: [quoteId], references: [id])
+  quote            Quote             @relation(fields: [quoteId], references: [id])
 
   @@map("bom_items")
 }
@@ -297,6 +324,7 @@ model Order {
   quoteId                String        @map("quote_id")
   quoteVersion           Int           @map("quote_version")
   merchantId             String        @map("merchant_id")
+  customerId             String?       @map("customer_id")
   clientName             String        @map("client_name")
   clientPhone            String?       @map("client_phone")
   clientEmail            String?       @map("client_email")
@@ -314,6 +342,7 @@ model Order {
   updatedAt              DateTime      @updatedAt @map("updated_at")
 
   quote                  Quote         @relation(fields: [quoteId], references: [id])
+  customer               Customer?     @relation(fields: [customerId], references: [id])
   merchant               User          @relation(fields: [merchantId], references: [id])
   supervisor             User?         @relation("SupervisorOrders", fields: [supervisorId], references: [id])
   orderItems             OrderItem[]

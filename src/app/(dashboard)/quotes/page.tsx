@@ -21,6 +21,7 @@ export default async function QuotesPage() {
     include: {
       merchant: { select: { name: true } },
       lead: { select: { clientName: true } },
+      customer: { select: { name: true } },
       bomItems: { select: { lineTotal: true } },
     },
   });
@@ -66,10 +67,12 @@ export default async function QuotesPage() {
                   <tr key={quote.id} className="hover:bg-card-hover transition-colors">
                     <td className="px-4 py-3">
                       <Link href={`/quotes/${quote.id}`} className="text-primary font-medium hover:underline text-sm">
-                        {quote.quoteNumber}
+                        {quote.quoteNumber}-V{quote.currentVersion}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-sm text-foreground">{quote.lead.clientName}</td>
+                    <td className="px-4 py-3 text-sm text-foreground">
+                      {quote.customer?.name || quote.lead.clientName}
+                    </td>
                     {isOwner && <td className="px-4 py-3 text-sm text-muted">{quote.merchant.name}</td>}
                     <td className="px-4 py-3 text-sm text-muted">v{quote.currentVersion}</td>
                     <td className="px-4 py-3 text-sm font-medium text-foreground">{formatINR(total)}</td>

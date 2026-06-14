@@ -3,7 +3,8 @@ import { prisma } from "@/lib/db";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { formatDate, formatINR, statusLabel } from "@/lib/format";
-import { COMPANY } from "@/lib/company";
+import { COMPANY, DEFAULT_TERMS } from "@/lib/company";
+import QuoteActions from "./QuoteActions";
 
 export default async function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -13,10 +14,12 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   const quote = await prisma.quote.findUnique({
     where: { id },
     include: {
-      lead: { select: { clientName: true, clientPhone: true, id: true } },
+      lead: { select: { clientName: true, clientPhone: true, clientEmail: true, id: true } },
+      customer: true,
       merchant: { select: { name: true } },
       bomItems: { orderBy: { lineNumber: "asc" } },
       versions: { orderBy: { versionNumber: "desc" } },
+      orders: { select: { id: true, orderNumber: true } },
     },
   });
 
@@ -36,6 +39,10 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
   }
   const grandTotal = subtotal + gstAmount - discount;
 
+  const displayNumber = `${quote.quoteNumber}-V${quote.currentVersion}`;
+  const customerName = quote.customer?.name || quote.lead.clientName;
+  const customerPhone = quote.customer?.phone || quote.lead.clientPhone;
+
   return (
     <div className="max-w-6xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
@@ -45,19 +52,30 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
           </svg>
         </Link>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-foreground">{quote.quoteNumber}</h1>
-          <p className="text-muted">{quote.lead.clientName} &middot; v{quote.currentVersion}</p>
+          <h1 className="text-2xl font-bold text-foreground">{displayNumber}</h1>
+          <p className="text-muted">{customerName}</p>
         </div>
         <span className={`text-xs px-3 py-1.5 rounded-full font-medium ${getQuoteStatusStyle(quote.status)}`}>
           {statusLabel(quote.status)}
         </span>
-        {(session.user.role === "merchant" || session.user.role === "owner") && quote.status === "draft" && (
-          <Link
-            href={`/quotes/${quote.id}/edit`}
-            className="px-4 py-2 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary-light transition-colors"
-          >
-            Edit BOM
-          </Link>
+        {(session.user.role === "merchant" || session.user.role === "owner") && (
+          <div className="flex items-center gap-2">
+            {(quote.status === "draft" || quote.status === "revision_requested") && (
+              <Link
+                href={`/quotes/${quote.id}/edit`}
+                className="px-4 py-2 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary-light transition-colors"
+              >
+                Edit Items
+              </Link>
+            )}
+            <Link
+              href={`/quotes/${quote.id}/print`}
+              target="_blank"
+              className="px-4 py-2 bg-surface text-foreground border border-border rounded-lg font-medium text-sm hover:bg-surface-hover transition-colors"
+            >
+              Print / PDF
+            </Link>
+          </div>
         )}
       </div>
 
@@ -76,18 +94,20 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
           </div>
           <div className="text-right">
             <p className="text-xs text-muted">Quote To:</p>
-            <p className="text-sm font-medium text-foreground">{quote.lead.clientName}</p>
-            {quote.lead.clientPhone && <p className="text-xs text-muted">{quote.lead.clientPhone}</p>}
+            <p className="text-sm font-medium text-foreground">{customerName}</p>
+            {customerPhone && <p className="text-xs text-muted">{customerPhone}</p>}
+            {quote.customer?.email && <p className="text-xs text-muted">{quote.customer.email}</p>}
+            {quote.customer?.gstn && <p className="text-xs text-muted">GSTN: {quote.customer.gstn}</p>}
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          {/* BOM Table */}
+          {/* Product Items Table */}
           <div className="bg-card border border-border rounded-xl overflow-hidden">
             <div className="px-6 py-4 border-b border-border">
-              <h2 className="font-semibold text-foreground">Bill of Materials</h2>
+              <h2 className="font-semibold text-foreground">Product Items</h2>
             </div>
             {quote.bomItems.length === 0 ? (
               <div className="p-8 text-center text-muted">
@@ -103,33 +123,62 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-surface text-left text-muted">
-                      <th className="px-4 py-2.5 font-medium">#</th>
+                      <th className="px-4 py-2.5 font-medium w-12">#</th>
+                      <th className="px-4 py-2.5 font-medium w-24">SKU</th>
                       <th className="px-4 py-2.5 font-medium">Description</th>
-                      <th className="px-4 py-2.5 font-medium">Material</th>
-                      <th className="px-4 py-2.5 font-medium">Qty</th>
-                      <th className="px-4 py-2.5 font-medium">Dimensions</th>
-                      <th className="px-4 py-2.5 font-medium text-right">Total</th>
+                      <th className="px-4 py-2.5 font-medium w-20 text-center">Qty</th>
+                      <th className="px-4 py-2.5 font-medium w-16">Unit</th>
+                      <th className="px-4 py-2.5 font-medium w-28 text-right">Price/Unit</th>
+                      <th className="px-4 py-2.5 font-medium w-28 text-right">Amount</th>
+                      <th className="px-4 py-2.5 font-medium w-16 text-center">Files</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {quote.bomItems.map((item) => (
                       <tr key={item.id} className="hover:bg-card-hover">
                         <td className="px-4 py-3 text-muted">{item.lineNumber}</td>
-                        <td className="px-4 py-3 font-medium text-foreground">{item.description}</td>
-                        <td className="px-4 py-3 text-muted">
-                          {item.materialName || statusLabel(item.materialCategory)}
-                          {item.materialGrade && <span className="text-xs ml-1">({item.materialGrade})</span>}
+                        <td className="px-4 py-3 text-muted font-mono text-xs">
+                          {item.productCode || "—"}
                         </td>
-                        <td className="px-4 py-3 text-muted">
-                          {Number(item.quantity)} {item.unit.replace(/_/g, " ")}
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-foreground">{item.description}</p>
+                          {item.notes && (
+                            <p className="text-xs text-muted mt-0.5">{item.notes}</p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center text-muted">
+                          {Number(item.quantity)}
                         </td>
                         <td className="px-4 py-3 text-muted text-xs">
-                          {item.lengthValue && `${item.lengthValue}${item.lengthUnit}`}
-                          {item.widthValue && ` × ${item.widthValue}${item.widthUnit}`}
-                          {item.heightValue && ` × ${item.heightValue}${item.heightUnit}`}
-                          {!item.lengthValue && "—"}
+                          {unitLabel(item.unit)}
                         </td>
-                        <td className="px-4 py-3 text-right font-medium">{formatINR(Number(item.lineTotal))}</td>
+                        <td className="px-4 py-3 text-right text-muted">
+                          {formatINR(Number(item.ratePerUnit))}
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium">
+                          {formatINR(Number(item.lineTotal))}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            {item.imageUrl && (
+                              <a href={item.imageUrl} target="_blank" className="text-primary hover:text-primary-light" title="View image">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" />
+                                </svg>
+                              </a>
+                            )}
+                            {item.drawingUrl && (
+                              <a href={item.drawingUrl} target="_blank" className="text-primary hover:text-primary-light" title="View drawing">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                                </svg>
+                              </a>
+                            )}
+                            {!item.imageUrl && !item.drawingUrl && (
+                              <span className="text-muted">—</span>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -148,14 +197,13 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 {quote.versions.map((version) => (
                   <div key={version.id} className="px-6 py-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-foreground">v{version.versionNumber}</span>
+                      <span className="text-sm font-medium text-foreground">
+                        {quote.quoteNumber}-V{version.versionNumber}
+                      </span>
                       <span className="text-xs text-muted">{formatDate(version.createdAt)}</span>
                     </div>
                     {version.changeSummary && (
                       <p className="text-xs text-muted mt-1">{version.changeSummary}</p>
-                    )}
-                    {version.changeReason && (
-                      <p className="text-xs text-accent mt-0.5">Reason: {version.changeReason}</p>
                     )}
                   </div>
                 ))}
@@ -164,7 +212,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
           )}
         </div>
 
-        {/* Sidebar - Pricing Summary */}
+        {/* Sidebar */}
         <div className="space-y-6">
           <div className="bg-card border border-border rounded-xl p-6">
             <h2 className="font-semibold text-foreground mb-4">Pricing Summary</h2>
@@ -195,8 +243,18 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             <dl className="space-y-3">
               <div>
                 <dt className="text-xs text-muted uppercase tracking-wide">Client</dt>
-                <dd className="text-sm text-foreground mt-0.5">{quote.lead.clientName}</dd>
+                <dd className="text-sm text-foreground mt-0.5">{customerName}</dd>
               </div>
+              {quote.customer && (
+                <div>
+                  <dt className="text-xs text-muted uppercase tracking-wide">Customer</dt>
+                  <dd className="text-sm mt-0.5">
+                    <Link href={`/customers/${quote.customer.id}`} className="text-primary hover:underline">
+                      {quote.customer.name}
+                    </Link>
+                  </dd>
+                </div>
+              )}
               <div>
                 <dt className="text-xs text-muted uppercase tracking-wide">Merchant</dt>
                 <dd className="text-sm text-foreground mt-0.5">{quote.merchant.name}</dd>
@@ -240,10 +298,33 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               </div>
             </dl>
           </div>
+
+          {/* Quote Actions */}
+          <QuoteActions
+            quoteId={quote.id}
+            quoteStatus={quote.status}
+            userRole={session.user.role}
+            hasOrder={quote.orders.length > 0}
+            orderId={quote.orders[0]?.id}
+            orderNumber={quote.orders[0]?.orderNumber}
+          />
         </div>
       </div>
     </div>
   );
+}
+
+function unitLabel(unit: string): string {
+  const labels: Record<string, string> = {
+    piece: "Pcs",
+    sq_ft: "Sq.ft",
+    cu_ft: "Cu.ft",
+    running_ft: "Rft",
+    kg: "Kg",
+    litre: "Ltr",
+    set: "Set",
+  };
+  return labels[unit] || unit;
 }
 
 function getQuoteStatusStyle(status: string): string {

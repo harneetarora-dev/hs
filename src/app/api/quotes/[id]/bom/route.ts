@@ -29,7 +29,10 @@ export async function PUT(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const quote = await prisma.quote.findUnique({ where: { id } });
+  const quote = await prisma.quote.findUnique({
+    where: { id },
+    include: { bomItems: { orderBy: { lineNumber: "asc" } } },
+  });
   if (!quote) {
     return NextResponse.json({ error: "Quote not found" }, { status: 404 });
   }
@@ -38,9 +41,26 @@ export async function PUT(
   }
 
   const body = await request.json();
-  const { items } = body;
+  const { items, changeSummary } = body;
 
-  // Delete existing items and recreate
+  const snapshotData = {
+    bomItems: quote.bomItems.map((item) => ({
+      lineNumber: item.lineNumber,
+      productCode: item.productCode,
+      description: item.description,
+      quantity: item.quantity,
+      unit: item.unit,
+      ratePerUnit: item.ratePerUnit,
+      lineTotal: item.lineTotal,
+      notes: item.notes,
+      imageUrl: item.imageUrl,
+      drawingUrl: item.drawingUrl,
+    })),
+    taxRate: quote.taxRate,
+    discountType: quote.discountType,
+    discountValue: quote.discountValue,
+  };
+
   await prisma.bomItem.deleteMany({ where: { quoteId: id } });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -51,29 +71,35 @@ export async function PUT(
           quoteId: id,
           lineNumber: item.lineNumber,
           description: item.description,
-          materialCategory: item.materialCategory,
-          materialName: item.materialName || null,
-          materialGrade: item.materialGrade || null,
-          unit: item.unit,
+          productCode: item.productCode || null,
+          unit: item.unit || "piece",
           quantity: item.quantity,
           ratePerUnit: item.ratePerUnit,
-          materialCost: item.quantity * item.ratePerUnit,
-          laborCost: item.laborCost || 0,
-          finishingCost: item.finishingCost || 0,
-          hardwareCost: item.hardwareCost || 0,
-          transportCost: item.transportCost || 0,
-          marginPercent: item.marginPercent || 0,
+          materialCost: 0,
           lineTotal: item.lineTotal,
-          lengthValue: item.lengthValue ?? null,
-          lengthUnit: item.lengthValue ? item.lengthUnit : null,
-          widthValue: item.widthValue ?? null,
-          widthUnit: item.widthValue ? item.widthUnit : null,
-          heightValue: item.heightValue ?? null,
-          heightUnit: item.heightValue ? item.heightUnit : null,
+          notes: item.notes || null,
+          imageUrl: item.imageUrl || null,
+          drawingUrl: item.drawingUrl || null,
         },
       })
     )
   );
+
+  const newVersion = quote.currentVersion + 1;
+  await prisma.quoteVersion.create({
+    data: {
+      quoteId: id,
+      versionNumber: newVersion,
+      changeSummary: changeSummary || `Updated to V${newVersion}`,
+      createdById: session.user.id,
+      snapshotData,
+    },
+  });
+
+  await prisma.quote.update({
+    where: { id },
+    data: { currentVersion: newVersion },
+  });
 
   return NextResponse.json(created);
 }
